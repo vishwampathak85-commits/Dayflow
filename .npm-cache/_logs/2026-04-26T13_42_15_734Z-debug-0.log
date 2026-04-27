@@ -1,0 +1,86 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.12.1
+2 info using node@v24.15.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/vishwampathak/dayflow/.npmrc
+5 silly config load:file:/Users/vishwampathak/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm install canvas-confetti
+8 verbose argv "install" "canvas-confetti" "--cache" ".npm-cache"
+9 verbose logfile logs-max:10 dir:/Users/vishwampathak/dayflow/.npm-cache/_logs/2026-04-26T13_42_15_734Z-
+10 verbose logfile /Users/vishwampathak/dayflow/.npm-cache/_logs/2026-04-26T13_42_15_734Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 silly idealTree buildDeps
+14 silly fetch manifest canvas-confetti@*
+15 silly packumentCache full:https://registry.npmjs.org/canvas-confetti cache-miss
+16 http fetch GET 200 https://registry.npmjs.org/canvas-confetti 222ms (cache miss)
+17 silly packumentCache full:https://registry.npmjs.org/canvas-confetti set size:undefined disposed:false
+18 silly placeDep ROOT canvas-confetti@1.9.4 OK for: dayflow@0.1.0 want: *
+19 silly fetch manifest react@^16.6.0
+20 silly packumentCache full:https://registry.npmjs.org/react cache-miss
+21 http fetch GET 200 https://registry.npmjs.org/react 154ms (cache miss)
+22 silly packumentCache full:https://registry.npmjs.org/react set size:undefined disposed:false
+23 silly fetch manifest react-dom@^16.6.0
+24 silly packumentCache full:https://registry.npmjs.org/react-dom cache-miss
+25 http fetch GET 200 https://registry.npmjs.org/react-dom 157ms (cache miss)
+26 silly packumentCache full:https://registry.npmjs.org/react-dom set size:undefined disposed:false
+27 verbose stack Error: could not resolve
+27 verbose stack     at PlaceDep.failPeerConflict (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/place-dep.js:503:25)
+27 verbose stack     at new PlaceDep (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/place-dep.js:157:21)
+27 verbose stack     at #buildDepStep (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:933:18)
+27 verbose stack     at async Arborist.buildIdealTree (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:170:7)
+27 verbose stack     at async Promise.all (index 1)
+27 verbose stack     at async Arborist.reify (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/reify.js:111:5)
+27 verbose stack     at async Install.exec (/usr/local/lib/node_modules/npm/lib/commands/install.js:146:5)
+27 verbose stack     at async Npm.exec (/usr/local/lib/node_modules/npm/lib/npm.js:193:9)
+27 verbose stack     at async module.exports (/usr/local/lib/node_modules/npm/lib/cli/entry.js:67:5)
+28 error code ERESOLVE
+29 error ERESOLVE could not resolve
+30 error
+31 error While resolving: next@9.3.3
+31 error Found: react@19.2.4
+31 error node_modules/react
+31 error   peer react@">=16.8.0" from @floating-ui/react-dom@2.1.8
+31 error   node_modules/@floating-ui/react-dom
+31 error     @floating-ui/react-dom@"^2.0.0" from @radix-ui/react-popper@1.2.8
+31 error     node_modules/@radix-ui/react-popper
+31 error       @radix-ui/react-popper@"1.2.8" from @radix-ui/react-hover-card@1.1.15
+31 error       node_modules/@radix-ui/react-hover-card
+31 error         @radix-ui/react-hover-card@"1.1.15" from radix-ui@1.4.3
+31 error         node_modules/radix-ui
+31 error       5 more (@radix-ui/react-menu, @radix-ui/react-popover, ...)
+31 error   peer react@"^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" from @radix-ui/react-accessible-icon@1.1.7
+31 error   node_modules/@radix-ui/react-accessible-icon
+31 error     @radix-ui/react-accessible-icon@"1.1.7" from radix-ui@1.4.3
+31 error     node_modules/radix-ui
+31 error       radix-ui@"^1.4.3" from the root project
+31 error   66 more (@radix-ui/react-accordion, ...)
+31 error
+31 error Could not resolve dependency:
+31 error peer react@"^16.6.0" from next@9.3.3
+31 error node_modules/next
+31 error   next@"^9.3.3" from the root project
+31 error
+31 error Conflicting peer dependency: react@16.14.0
+31 error node_modules/react
+31 error   peer react@"^16.6.0" from next@9.3.3
+31 error   node_modules/next
+31 error     next@"^9.3.3" from the root project
+31 error
+31 error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+32 error
+32 error
+32 error For a full report see:
+32 error /Users/vishwampathak/dayflow/.npm-cache/_logs/2026-04-26T13_42_15_734Z-eresolve-report.txt
+33 silly unfinished npm timer reify 1777210935798
+34 silly unfinished npm timer reify:loadTrees 1777210935799
+35 silly unfinished npm timer idealTree:buildDeps 1777210935991
+36 silly unfinished npm timer idealTree:node_modules/next 1777210936218
+37 verbose cwd /Users/vishwampathak/dayflow
+38 verbose os Darwin 24.6.0
+39 verbose node v24.15.0
+40 verbose npm  v11.12.1
+41 verbose exit 1
+42 verbose code 1
+43 error A complete log of this run can be found in: /Users/vishwampathak/dayflow/.npm-cache/_logs/2026-04-26T13_42_15_734Z-debug-0.log
