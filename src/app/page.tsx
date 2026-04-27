@@ -37,9 +37,6 @@ export default function Home() {
 
   const loadTodayTasks = useCallback(async () => {
     if (!supabase) {
-      setLoadError(
-        "Missing Supabase environment variables. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
-      );
       setIsLoadingTasks(false);
       return;
     }
@@ -55,11 +52,12 @@ export default function Home() {
       .eq("date", today)
       .order("start_time", { ascending: true });
 
-if (error) {
-  // Ignore "no rows" — just show the brain dump form
-  setIsLoadingTasks(false);
-  return;
-}
+    if (error) {
+      // No tasks yet — silently show brain dump form
+      setIsLoadingTasks(false);
+      return;
+    }
+
     setTasks((data as TaskRecord[]) ?? []);
     setIsLoadingTasks(false);
   }, [today]);
@@ -81,12 +79,18 @@ if (error) {
       return;
     }
 
+    if (supabase && tasks.length > 0) {
+      const total = tasks.length;
+      const completed = tasks.filter((t) => t.completed).length;
+      const rate = Math.round((completed / total) * 100);
+      void supabase.from("daily_summaries").upsert(
+        { date: today, tasks_total: total, tasks_completed: completed, completion_rate: rate },
+        { onConflict: "date" },
+      );
+    }
+
     setShowCelebration(true);
-    void confetti({
-      particleCount: 180,
-      spread: 85,
-      origin: { y: 0.6 },
-    });
+    void confetti({ particleCount: 180, spread: 85, origin: { y: 0.6 } });
 
     celebrationTimeoutRef.current = window.setTimeout(() => {
       setShowCelebration(false);
@@ -97,16 +101,11 @@ if (error) {
         window.clearTimeout(celebrationTimeoutRef.current);
       }
     };
-  }, [allTasksCompleted]);
+  }, [allTasksCompleted, tasks, today]);
 
   const handleScheduleGenerated = useCallback(
     async (generatedTasks: ScheduledTask[]) => {
-      if (!supabase) {
-        setLoadError(
-          "Missing Supabase environment variables. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
-        );
-        return;
-      }
+      if (!supabase) return;
 
       const tasksForUi: TimetableTask[] = generatedTasks.map((task) => ({
         ...task,
@@ -138,9 +137,7 @@ if (error) {
         setLoadError("Schedule generated, but failed to save tasks.");
       } else {
         setLoadError(null);
-        if (data) {
-          setTasks(data as TaskRecord[]);
-        }
+        if (data) setTasks(data as TaskRecord[]);
       }
     },
     [today],
@@ -148,26 +145,11 @@ if (error) {
 
   const handleToggleTaskCompleted = useCallback(
     async (taskToToggle: TimetableTask) => {
-      if (!supabase) {
-        setLoadError(
-          "Missing Supabase environment variables. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
-        );
-        return;
-      }
-
-      if (!taskToToggle.id) {
-        setLoadError("Task is missing UUID and cannot be updated.");
-        return;
-      }
+      if (!supabase || !taskToToggle.id) return;
 
       const nextCompleted = !taskToToggle.completed;
-
-      setTasks((prevTasks) =>
-        prevTasks.map((task) => {
-          return task.id === taskToToggle.id
-            ? { ...task, completed: nextCompleted }
-            : task;
-        }),
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskToToggle.id ? { ...t, completed: nextCompleted } : t)),
       );
 
       const { error } = await supabase
@@ -176,20 +158,33 @@ if (error) {
         .eq("id", taskToToggle.id);
 
       if (error) {
-        setLoadError("Task updated locally, but failed to save completion status.");
-        setTasks((prevTasks) =>
-          prevTasks.map((task) => {
-            return task.id === taskToToggle.id
-              ? { ...task, completed: taskToToggle.completed }
-              : task;
-          }),
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskToToggle.id ? { ...t, completed: taskToToggle.completed } : t)),
         );
-      } else {
-        setLoadError(null);
       }
     },
     [],
   );
+
+  const handleUpdatePriority = useCallback(
+    async (taskToUpdate: TimetableTask, newPriority: TimetableTask["priority"]) => {
+      if (!supabase || !taskToUpdate.id) return;
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskToUpdate.id ? { ...t, priority: newPriority } : t)),
+      );
+      await supabase.from("tasks").update({ priority: newPriority }).eq("id", taskToUpdate.id);
+    },
+    [],
+  );
+
+  const handleReorderTasks = useCallback(async (reorderedTasks: TimetableTask[]) => {
+    if (!supabase) return;
+    setTasks(reorderedTasks);
+    const updates = reorderedTasks.map((task, index) =>
+      supabase!.from("tasks").update({ order_index: index }).eq("id", task.id as string),
+    );
+    await Promise.all(updates);
+  }, []);
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
@@ -209,9 +204,7 @@ if (error) {
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-10 sm:px-6">
         <header className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              DayFlow
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">DayFlow</h1>
             <p className="text-sm text-muted-foreground sm:text-base">
               Turn your brain dump into a realistic daily schedule.
             </p>
@@ -224,24 +217,6 @@ if (error) {
           </Link>
         </header>
 
-        {!isSupabaseConfigured ? (
-          <div className="rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-            Supabase is not configured. Add{" "}
-            <code className="rounded bg-black/5 px-1 py-0.5 dark:bg-white/10">
-              NEXT_PUBLIC_SUPABASE_URL
-            </code>{" "}
-            and{" "}
-            <code className="rounded bg-black/5 px-1 py-0.5 dark:bg-white/10">
-              NEXT_PUBLIC_SUPABASE_ANON_KEY
-            </code>{" "}
-            to <code className="rounded bg-black/5 px-1 py-0.5 dark:bg-white/10">.env.local</code>, then restart
-            <code className="ml-1 rounded bg-black/5 px-1 py-0.5 dark:bg-white/10">
-              npm run dev
-            </code>
-            .
-          </div>
-        ) : null}
-
         {loadError ? (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {loadError}
@@ -253,7 +228,12 @@ if (error) {
             Loading today&apos;s tasks...
           </div>
         ) : tasks.length > 0 ? (
-          <Timetable tasks={tasks} onToggleTaskCompleted={handleToggleTaskCompleted} />
+          <Timetable
+            tasks={tasks}
+            onToggleTaskCompleted={handleToggleTaskCompleted}
+            onUpdatePriority={handleUpdatePriority}
+            onReorderTasks={handleReorderTasks}
+          />
         ) : (
           <BrainDump onScheduleGenerated={handleScheduleGenerated} />
         )}
