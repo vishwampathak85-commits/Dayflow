@@ -55,12 +55,11 @@ export default function Home() {
       .eq("date", today)
       .order("start_time", { ascending: true });
 
-    if (error) {
-      setLoadError("Failed to load tasks for today.");
-      setIsLoadingTasks(false);
-      return;
-    }
-
+if (error) {
+  // Ignore "no rows" — just show the brain dump form
+  setIsLoadingTasks(false);
+  return;
+}
     setTasks((data as TaskRecord[]) ?? []);
     setIsLoadingTasks(false);
   }, [today]);
