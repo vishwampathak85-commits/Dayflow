@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 type ScheduleRequest = {
   brainDump: string;
   date: string;
+  startTime?: string;
+  endTime?: string;
 };
 
 type TaskCategory = "work" | "personal" | "learning" | "admin";
@@ -159,9 +161,16 @@ function normalizeBrainDump(brainDump: string): BrainDumpItem[] {
   }));
 }
 
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h ?? 9) * 60 + (m ?? 0);
+}
+
 function buildFallbackSchedule(
   brainDump: string,
   summaryRows: DailySummaryRow[],
+  startTime = "09:00",
+  endTime = "18:00",
 ): ScheduledTask[] {
   const items = normalizeBrainDump(brainDump);
   if (items.length === 0) {
@@ -183,7 +192,8 @@ function buildFallbackSchedule(
   const ordered = [...highWork, ...mediumThenLow].slice(0, maxTasks);
 
   const scheduled: ScheduledTask[] = [];
-  let currentMinute = 9 * 60;
+  const windowEnd = timeToMinutes(endTime);
+  let currentMinute = timeToMinutes(startTime);
 
   for (let index = 0; index < ordered.length; index += 1) {
     const item = ordered[index];
@@ -191,6 +201,8 @@ function buildFallbackSchedule(
       item.priority === "high" ? 60 : item.category === "learning" ? 50 : 40;
     const start = currentMinute;
     const end = start + duration;
+
+    if (end > windowEnd) break;
 
     scheduled.push({
       title: item.text,
@@ -204,7 +216,7 @@ function buildFallbackSchedule(
     });
 
     currentMinute = end + 10;
-    if (currentMinute >= 18 * 60) {
+    if (currentMinute >= windowEnd) {
       break;
     }
   }
@@ -219,6 +231,8 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Partial<ScheduleRequest>;
     const brainDump = body.brainDump?.trim();
     const date = body.date?.trim();
+    const startTime = body.startTime?.trim() ?? "09:00";
+    const endTime = body.endTime?.trim() ?? "18:00";
 
     if (!brainDump || !date) {
       return NextResponse.json(
@@ -257,7 +271,7 @@ export async function POST(req: Request) {
 
     const userCapacityContext = formatUserCapacityContext(recentSummaryRows);
 
-    const fallbackSchedule = buildFallbackSchedule(brainDump, recentSummaryRows);
+    const fallbackSchedule = buildFallbackSchedule(brainDump, recentSummaryRows, startTime, endTime);
 
     if (!apiKey) {
       return NextResponse.json(fallbackSchedule);
@@ -277,8 +291,9 @@ export async function POST(req: Request) {
           {
             role: "user",
             content: `Create a realistic day schedule for date: ${date}.
+The user's available working window is ${startTime} to ${endTime}. All tasks must be scheduled within this window.
 
-Brain dump:
+Tasks to schedule:
 ${brainDump}
 
 Rules:
@@ -286,12 +301,13 @@ Rules:
 ${TASK_JSON_SCHEMA}
 2) Use category values only from: work, personal, learning, admin.
 3) Use priority values only from: high, medium, low.
-4) Schedule tasks intelligently across the day in chronological order.
-5) Leave realistic buffer time between tasks.
-6) Place high-priority work tasks in the morning whenever possible.
-7) Ensure times are realistic and duration matches start/end.
-8) order_index must start at 0 and increment by 1.
-9) Use the user's recent performance context to keep the plan realistic for this user's capacity.
+4) Schedule tasks in chronological order within the ${startTime}–${endTime} window.
+5) Do not schedule any task to start before ${startTime} or end after ${endTime}.
+6) Leave realistic buffer time between tasks.
+7) Place high-priority work tasks earlier in the window whenever possible.
+8) Ensure times are realistic and duration_minutes matches the gap between start_time and end_time.
+9) order_index must start at 0 and increment by 1.
+10) Use the user's recent performance context to keep the plan realistic for this user's capacity.
 
 User performance context:
 ${userCapacityContext}`,

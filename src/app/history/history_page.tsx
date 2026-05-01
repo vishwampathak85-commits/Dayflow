@@ -70,7 +70,7 @@ export default function HistoryPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="min-h-screen bg-background font-sans text-foreground">
       <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div>

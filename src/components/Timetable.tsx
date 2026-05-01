@@ -2,12 +2,16 @@
 
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
+  closestCorners,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -33,204 +37,234 @@ export type TimetableTask = {
   completed: boolean;
 };
 
+type Status = "ongoing" | "due" | "completed";
+
 type TimetableProps = {
   tasks: TimetableTask[];
   onToggleTaskCompleted?: (task: TimetableTask) => void;
-  onUpdatePriority?: (task: TimetableTask, priority: TaskPriority) => void;
   onReorderTasks?: (tasks: TimetableTask[]) => void;
 };
 
-const categoryClasses: Record<TaskCategory, string> = {
-  work: "bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-400/30",
-  personal:
-    "bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/10 dark:text-green-300 dark:ring-green-400/30",
-  learning:
-    "bg-purple-100 text-purple-700 ring-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:ring-purple-400/30",
-  admin:
-    "bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-400/30",
+const COLUMN_IDS: Status[] = ["ongoing", "due", "completed"];
+
+const COLUMN_CONFIG: Record<
+  Status,
+  { title: string; accent: string; dot: string; overClass: string }
+> = {
+  ongoing: {
+    title: "Ongoing",
+    accent: "text-blue-700 bg-blue-50 border-blue-200",
+    dot: "bg-blue-500",
+    overClass: "border-blue-400/50 bg-blue-50/40",
+  },
+  due: {
+    title: "Due",
+    accent: "text-amber-700 bg-amber-50 border-amber-200",
+    dot: "bg-amber-500",
+    overClass: "border-amber-400/50 bg-amber-50/40",
+  },
+  completed: {
+    title: "Completed",
+    accent: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    dot: "bg-emerald-500",
+    overClass: "border-emerald-400/50 bg-emerald-50/40",
+  },
 };
 
-const priorityDotClasses: Record<TaskPriority, string> = {
-  high: "bg-red-500",
-  medium: "bg-yellow-500",
-  low: "bg-zinc-400",
-};
+function getTaskId(task: TimetableTask): string {
+  return task.id ?? task.title;
+}
 
-const priorityLabelClasses: Record<TaskPriority, string> = {
-  high: "text-red-600 dark:text-red-400",
-  medium: "text-yellow-600 dark:text-yellow-400",
-  low: "text-zinc-500",
-};
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `~${minutes} min`;
+  if (minutes === 60) return "~1 hr";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `~${h} hr${h > 1 ? "s" : ""}` : `~${h}h ${m}m`;
+}
 
-// Individual sortable task card
-function SortableTaskCard({
-  task,
-  onToggleTaskCompleted,
-  onUpdatePriority,
-}: {
-  task: TimetableTask;
-  onToggleTaskCompleted?: (task: TimetableTask) => void;
-  onUpdatePriority?: (task: TimetableTask, priority: TaskPriority) => void;
-}) {
-  const [editingPriority, setEditingPriority] = useState(false);
+function computeInitialStatus(task: TimetableTask): Status {
+  if (task.completed) return "completed";
+  if (new Date().getHours() >= 16) return "due";
+  return "ongoing";
+}
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id ?? task.title });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
+// ── Plain card rendered inside DragOverlay ───────────────────────────────────
+function TaskCard({ task }: { task: TimetableTask }) {
   return (
-    <li ref={setNodeRef} style={style} className="relative">
-      {/* Priority dot on the timeline */}
-      <span className="absolute top-5 -left-6 inline-flex h-4 w-4 items-center justify-center rounded-full bg-background ring-4 ring-background">
-        <span
-          className={`h-2.5 w-2.5 rounded-full ${priorityDotClasses[task.priority]}`}
-        />
-      </span>
-
-      <article
-        className={`rounded-xl border bg-background p-4 transition hover:shadow-sm ${
-          task.completed ? "border-emerald-200/70 opacity-80" : "border-border"
-        } ${isDragging ? "shadow-lg" : ""}`}
-      >
-        {/* Top row: drag handle + time + category + duration */}
-        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-          {/* Drag handle */}
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            className="cursor-grab touch-none text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing"
-            aria-label="Drag to reorder"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <circle cx="9" cy="5" r="1.5" />
-              <circle cx="15" cy="5" r="1.5" />
-              <circle cx="9" cy="12" r="1.5" />
-              <circle cx="15" cy="12" r="1.5" />
-              <circle cx="9" cy="19" r="1.5" />
-              <circle cx="15" cy="19" r="1.5" />
-            </svg>
-          </button>
-
-          <span className="rounded-md bg-muted px-2 py-1 text-foreground">
-            {task.start_time} - {task.end_time}
-          </span>
-          <span
-            className={`rounded-full px-2.5 py-1 capitalize ring-1 ring-inset ${categoryClasses[task.category]}`}
-          >
-            {task.category}
-          </span>
-          <span className="rounded-md bg-muted px-2 py-1">
-            {task.duration_minutes} min
-          </span>
-        </div>
-
-        {/* Task title */}
-        <h3
-          className={`mt-3 text-base font-semibold ${
-            task.completed ? "text-muted-foreground line-through" : "text-foreground"
-          }`}
-        >
-          {task.title}
-        </h3>
-
-        {/* Priority row — click to edit */}
-        <div className="mt-2 flex items-center gap-2">
-          {editingPriority ? (
-            <select
-              autoFocus
-              value={task.priority}
-              onChange={(e) => {
-                onUpdatePriority?.(task, e.target.value as TaskPriority);
-                setEditingPriority(false);
-              }}
-              onBlur={() => setEditingPriority(false)}
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditingPriority(true)}
-              className={`text-xs capitalize hover:underline ${priorityLabelClasses[task.priority]} ${
-                task.completed ? "line-through" : ""
-              }`}
-              title="Click to change priority"
-            >
-              Priority: {task.priority} ✎
-            </button>
-          )}
-        </div>
-
-        {/* Mark complete button */}
-        <div className="mt-3 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={() => onToggleTaskCompleted?.(task)}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-              task.completed
-                ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300"
-                : "border-border bg-muted text-foreground hover:bg-muted/80"
-            }`}
-          >
-            {task.completed ? "Completed ✓" : "Mark complete"}
-          </button>
-        </div>
-      </article>
-    </li>
+    <div className="rounded-xl bg-white px-4 py-3.5 shadow-lg ring-1 ring-black/5">
+      <p className="text-sm font-medium leading-snug text-zinc-800">{task.title}</p>
+      <p className="mt-1.5 text-xs text-zinc-400">{formatDuration(task.duration_minutes)}</p>
+    </div>
   );
 }
 
-export function Timetable({
-  tasks,
-  onToggleTaskCompleted,
-  onUpdatePriority,
-  onReorderTasks,
-}: TimetableProps) {
+// ── Sortable card ────────────────────────────────────────────────────────────
+function SortableTaskCard({ task }: { task: TimetableTask }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: getTaskId(task) });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      className={`cursor-grab select-none rounded-xl bg-white px-4 py-3.5 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md active:cursor-grabbing ${
+        isDragging ? "opacity-0" : "opacity-100"
+      }`}
+    >
+      <p className="text-sm font-medium leading-snug text-zinc-800">{task.title}</p>
+      <p className="mt-1.5 text-xs text-zinc-400">{formatDuration(task.duration_minutes)}</p>
+    </div>
+  );
+}
+
+// ── Column with its own droppable zone ───────────────────────────────────────
+function KanbanColumn({ status, tasks }: { status: Status; tasks: TimetableTask[] }) {
+  const cfg = COLUMN_CONFIG[status];
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-3">
+      {/* Header */}
+      <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${cfg.accent}`}>
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
+          <h3 className="text-sm font-semibold">{cfg.title}</h3>
+        </div>
+        <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-xs font-medium text-zinc-500">
+          {tasks.length}
+        </span>
+      </div>
+
+      {/* Drop zone */}
+      <div
+        ref={setNodeRef}
+        className={`flex flex-1 flex-col gap-2.5 rounded-xl border-2 border-dashed p-3 transition-colors ${
+          isOver ? cfg.overClass : "border-border/40 bg-muted/10"
+        }`}
+        style={{ minHeight: 300 }}
+      >
+        <SortableContext items={tasks.map(getTaskId)} strategy={verticalListSortingStrategy}>
+          {tasks.map((task) => (
+            <SortableTaskCard key={getTaskId(task)} task={task} />
+          ))}
+        </SortableContext>
+
+        {tasks.length === 0 && (
+          <div className="flex flex-1 items-center justify-center py-10">
+            <p className="text-xs text-muted-foreground/50">Drop tasks here</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main export ──────────────────────────────────────────────────────────────
+export function Timetable({ tasks, onToggleTaskCompleted }: TimetableProps) {
+  // Single source of truth: column membership and order
+  const [columnOrder, setColumnOrder] = useState<Record<Status, string[]>>(() => {
+    const map: Record<Status, string[]> = { ongoing: [], due: [], completed: [] };
+    for (const task of tasks) {
+      map[computeInitialStatus(task)].push(getTaskId(task));
+    }
+    return map;
+  });
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const taskIds = tasks.map((t) => t.id ?? t.title);
+  const activeTask = activeId
+    ? (tasks.find((t) => getTaskId(t) === activeId) ?? null)
+    : null;
 
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = tasks.findIndex((t) => (t.id ?? t.title) === active.id);
-    const newIndex = tasks.findIndex((t) => (t.id ?? t.title) === over.id);
-    const reordered = arrayMove(tasks, oldIndex, newIndex);
-    onReorderTasks?.(reordered);
+  // Always use latest state via functional-update helpers
+  function colOf(taskId: string, order: Record<Status, string[]>): Status | null {
+    return COLUMN_IDS.find((s) => order[s].includes(taskId)) ?? null;
   }
+
+  function columnTasks(status: Status, order: Record<Status, string[]>): TimetableTask[] {
+    return order[status]
+      .map((id) => tasks.find((t) => getTaskId(t) === id))
+      .filter(Boolean) as TimetableTask[];
+  }
+
+  function handleDragStart({ active }: DragStartEvent) {
+    setActiveId(active.id as string);
+  }
+
+  // Provide live visual feedback as the card hovers over a new column
+  function handleDragOver({ active, over }: DragOverEvent) {
+    if (!over) return;
+    const aId = active.id as string;
+    const oId = over.id as string;
+
+    setColumnOrder((prev) => {
+      const src = colOf(aId, prev);
+      const dest = COLUMN_IDS.includes(oId as Status)
+        ? (oId as Status)
+        : colOf(oId, prev);
+      if (!src || !dest || src === dest) return prev;
+
+      const next = { ...prev };
+      next[src] = next[src].filter((id) => id !== aId);
+      const overIdx = next[dest].indexOf(oId);
+      if (overIdx !== -1) {
+        next[dest] = [
+          ...next[dest].slice(0, overIdx),
+          aId,
+          ...next[dest].slice(overIdx),
+        ];
+      } else {
+        next[dest] = [...next[dest], aId];
+      }
+      return next;
+    });
+  }
+
+  // Finalise: sort within column if dropped on a sibling task
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    setActiveId(null);
+    if (!over) return;
+
+    const aId = active.id as string;
+    const oId = over.id as string;
+
+    setColumnOrder((prev) => {
+      const col = colOf(aId, prev);
+      if (!col) return prev;
+
+      // Within-column sort when dropped directly onto a sibling
+      if (!COLUMN_IDS.includes(oId as Status) && prev[col].includes(oId)) {
+        const oldIdx = prev[col].indexOf(aId);
+        const newIdx = prev[col].indexOf(oId);
+        if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
+          return { ...prev, [col]: arrayMove(prev[col], oldIdx, newIdx) };
+        }
+      }
+      return prev;
+    });
+
+    // Trigger DB completion toggle when a task crosses the completed boundary
+    setColumnOrder((prev) => {
+      const finalCol = colOf(aId, prev);
+      const task = tasks.find((t) => getTaskId(t) === aId);
+      if (!task || !finalCol) return prev;
+      if (finalCol === "completed" && !task.completed) onToggleTaskCompleted?.(task);
+      if (finalCol !== "completed" && task.completed) onToggleTaskCompleted?.(task);
+      return prev;
+    });
+  }
+
   if (tasks.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
+      <div className="flex items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-12">
         <p className="text-sm text-muted-foreground">
           Your schedule will appear here once generated.
         </p>
@@ -239,33 +273,22 @@ export function Timetable({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold tracking-tight">Daily Timeline</h2>
-        <p className="text-sm text-muted-foreground">
-          Drag ⠿ to reorder · Click priority to change it.
-        </p>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid grid-cols-3 gap-5">
+        {COLUMN_IDS.map((s) => (
+          <KanbanColumn key={s} status={s} tasks={columnTasks(s, columnOrder)} />
+        ))}
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          <ol className="relative space-y-4 pl-6">
-            <div className="absolute top-1 bottom-1 left-2.5 w-px bg-border" />
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id ?? task.title}
-                task={task}
-                onToggleTaskCompleted={onToggleTaskCompleted}
-                onUpdatePriority={onUpdatePriority}
-              />
-            ))}
-          </ol>
-        </SortableContext>
-      </DndContext>
-    </div>
+      <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+        {activeTask ? <TaskCard task={activeTask} /> : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
