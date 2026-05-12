@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type TaskCategory = "work" | "personal" | "learning" | "admin";
 type TaskPriority = "high" | "medium" | "low";
@@ -163,7 +163,7 @@ function KanbanColumn({ status, tasks }: { status: Status; tasks: TimetableTask[
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
-export function Timetable({ tasks, onToggleTaskCompleted }: TimetableProps) {
+export function Timetable({ tasks, onToggleTaskCompleted, onReorderTasks }: TimetableProps) {
   // Single source of truth: column membership and order
   const [columnOrder, setColumnOrder] = useState<Record<Status, string[]>>(() => {
     const map: Record<Status, string[]> = { ongoing: [], due: [], completed: [] };
@@ -172,6 +172,10 @@ export function Timetable({ tasks, onToggleTaskCompleted }: TimetableProps) {
     }
     return map;
   });
+
+  // Ref so handleDragEnd can read the latest committed columnOrder without functional-updater tricks
+  const columnOrderRef = useRef(columnOrder);
+  columnOrderRef.current = columnOrder;
 
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -235,31 +239,37 @@ export function Timetable({ tasks, onToggleTaskCompleted }: TimetableProps) {
 
     const aId = active.id as string;
     const oId = over.id as string;
+    const prev = columnOrderRef.current;
+    const col = colOf(aId, prev);
+    if (!col) return;
 
-    setColumnOrder((prev) => {
-      const col = colOf(aId, prev);
-      if (!col) return prev;
-
-      // Within-column sort when dropped directly onto a sibling
-      if (!COLUMN_IDS.includes(oId as Status) && prev[col].includes(oId)) {
-        const oldIdx = prev[col].indexOf(aId);
-        const newIdx = prev[col].indexOf(oId);
-        if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
-          return { ...prev, [col]: arrayMove(prev[col], oldIdx, newIdx) };
-        }
+    // Within-column reorder when dropped directly onto a sibling
+    let next = prev;
+    if (!COLUMN_IDS.includes(oId as Status) && prev[col].includes(oId)) {
+      const oldIdx = prev[col].indexOf(aId);
+      const newIdx = prev[col].indexOf(oId);
+      if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
+        next = { ...prev, [col]: arrayMove(prev[col], oldIdx, newIdx) };
       }
-      return prev;
-    });
+    }
+    setColumnOrder(next);
 
-    // Trigger DB completion toggle when a task crosses the completed boundary
-    setColumnOrder((prev) => {
-      const finalCol = colOf(aId, prev);
-      const task = tasks.find((t) => getTaskId(t) === aId);
-      if (!task || !finalCol) return prev;
-      if (finalCol === "completed" && !task.completed) onToggleTaskCompleted?.(task);
-      if (finalCol !== "completed" && task.completed) onToggleTaskCompleted?.(task);
-      return prev;
-    });
+    // Toggle completion when task crosses the completed boundary
+    const task = tasks.find((t) => getTaskId(t) === aId);
+    if (task) {
+      if (col === "completed" && !task.completed) onToggleTaskCompleted?.(task);
+      if (col !== "completed" && task.completed) onToggleTaskCompleted?.(task);
+    }
+
+    // Notify parent of final flat order for persistence
+    if (onReorderTasks) {
+      const reordered = COLUMN_IDS.flatMap((s) =>
+        next[s]
+          .map((id: string) => tasks.find((t) => getTaskId(t) === id))
+          .filter(Boolean) as TimetableTask[]
+      );
+      onReorderTasks(reordered);
+    }
   }
 
   if (tasks.length === 0) {

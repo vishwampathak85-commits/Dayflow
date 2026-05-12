@@ -144,6 +144,29 @@ export default function Home() {
     [today],
   );
 
+  const handleReorderTasks = useCallback(
+    (reorderedTasks: TimetableTask[]) => {
+      setTasks((prev: TimetableTask[]) => {
+        // Preserve the latest completed state from any in-flight toggle
+        const completedById = new Map(prev.map((t: TimetableTask) => [t.id, t.completed]));
+        const updated = reorderedTasks.map((t: TimetableTask) => ({
+          ...t,
+          completed: completedById.get(t.id) ?? t.completed,
+        }));
+        lsSave(today, updated);
+        return updated;
+      });
+
+      if (!supabase) return;
+      reorderedTasks.forEach((task, index) => {
+        if (task.id) {
+          void supabase!.from("tasks").update({ order_index: index }).eq("id", task.id);
+        }
+      });
+    },
+    [today],
+  );
+
   // Toggle completion (Kanban drag to completed column)
   const handleToggleTaskCompleted = useCallback(async (taskToToggle: TimetableTask) => {
     const nextCompleted = !taskToToggle.completed;
@@ -187,7 +210,7 @@ export default function Home() {
               Turn your brain dump into a realistic daily schedule.
             </p>
           </header>
-          <Timetable tasks={tasks} onToggleTaskCompleted={handleToggleTaskCompleted} />
+          <Timetable tasks={tasks} onToggleTaskCompleted={handleToggleTaskCompleted} onReorderTasks={handleReorderTasks} />
         </div>
       ) : (
         /* ── Brain dump view: vertically + horizontally centered ── */
