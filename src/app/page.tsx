@@ -103,7 +103,8 @@ export default function Home() {
     void confetti({ particleCount: 180, spread: 85, origin: { y: 0.6 } });
     celebrationTimeoutRef.current = window.setTimeout(() => setShowCelebration(false), 4200);
     return () => { if (celebrationTimeoutRef.current) window.clearTimeout(celebrationTimeoutRef.current); };
-  }, [allTasksCompleted, tasks, today]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTasksCompleted, today]); // intentionally omit `tasks` — fire only on the false→true transition, not on every reorder
 
   // Schedule generated: always show tasks immediately, save silently
   const handleScheduleGenerated = useCallback(
@@ -147,11 +148,11 @@ export default function Home() {
   const handleReorderTasks = useCallback(
     (reorderedTasks: TimetableTask[]) => {
       setTasks((prev: TimetableTask[]) => {
-        // Preserve the latest completed state from any in-flight toggle
-        const completedById = new Map(prev.map((t: TimetableTask) => [t.id, t.completed]));
+        // Use id ?? title as key so tasks without a UUID (localStorage-only) don't collide on undefined
+        const completedById = new Map(prev.map((t: TimetableTask) => [t.id ?? t.title, t.completed]));
         const updated = reorderedTasks.map((t: TimetableTask) => ({
           ...t,
-          completed: completedById.get(t.id) ?? t.completed,
+          completed: completedById.get(t.id ?? t.title) ?? t.completed,
         }));
         lsSave(today, updated);
         return updated;

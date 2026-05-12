@@ -254,22 +254,27 @@ export function Timetable({ tasks, onToggleTaskCompleted, onReorderTasks }: Time
     }
     setColumnOrder(next);
 
-    // Toggle completion when task crosses the completed boundary
-    const task = tasks.find((t) => getTaskId(t) === aId);
-    if (task) {
-      if (col === "completed" && !task.completed) onToggleTaskCompleted?.(task);
-      if (col !== "completed" && task.completed) onToggleTaskCompleted?.(task);
-    }
+    // Defer parent setState calls out of dnd-kit's internal flushSync context.
+    // Calling them synchronously here triggers React's "setState during render" error.
+    const finalCol = col;
+    const draggedTask = tasks.find((t) => getTaskId(t) === aId);
+    const frozenNext = next;
+    const frozenTasks = tasks;
+    setTimeout(() => {
+      if (draggedTask) {
+        if (finalCol === "completed" && !draggedTask.completed) onToggleTaskCompleted?.(draggedTask);
+        if (finalCol !== "completed" && draggedTask.completed) onToggleTaskCompleted?.(draggedTask);
+      }
 
-    // Notify parent of final flat order for persistence
-    if (onReorderTasks) {
-      const reordered = COLUMN_IDS.flatMap((s) =>
-        next[s]
-          .map((id: string) => tasks.find((t) => getTaskId(t) === id))
-          .filter(Boolean) as TimetableTask[]
-      );
-      onReorderTasks(reordered);
-    }
+      if (onReorderTasks) {
+        const reordered = COLUMN_IDS.flatMap((s) =>
+          frozenNext[s]
+            .map((id: string) => frozenTasks.find((t) => getTaskId(t) === id))
+            .filter(Boolean) as TimetableTask[]
+        );
+        onReorderTasks(reordered);
+      }
+    }, 0);
   }
 
   if (tasks.length === 0) {
