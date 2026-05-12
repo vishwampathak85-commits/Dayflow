@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type TaskCategory = "work" | "personal" | "learning" | "admin";
 type TaskPriority = "high" | "medium" | "low";
@@ -176,6 +176,16 @@ export function Timetable({ tasks, onToggleTaskCompleted, onReorderTasks }: Time
   // Ref so handleDragEnd can read the latest committed columnOrder without functional-updater tricks
   const columnOrderRef = useRef(columnOrder);
   columnOrderRef.current = columnOrder;
+
+  // When tasks are added externally (e.g. "Add additional task"), slot them into "ongoing"
+  useEffect(() => {
+    setColumnOrder((prev: Record<Status, string[]>) => {
+      const known = new Set(COLUMN_IDS.flatMap((s) => prev[s]));
+      const newIds = tasks.map(getTaskId).filter((id) => !known.has(id));
+      if (newIds.length === 0) return prev;
+      return { ...prev, ongoing: [...prev.ongoing, ...newIds] };
+    });
+  }, [tasks]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
 
