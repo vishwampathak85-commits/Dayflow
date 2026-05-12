@@ -9,6 +9,14 @@ import { supabase } from "@/lib/supabase";
 
 // ── localStorage helpers (24-hour cache) ────────────────────────────────────
 const LS_KEY = "dayflow_schedule";
+const LS_CELEBRATED_KEY = "dayflow_celebrated_date";
+
+function hasCelebratedToday(date: string): boolean {
+  try { return localStorage.getItem(LS_CELEBRATED_KEY) === date; } catch { return false; }
+}
+function markCelebratedToday(date: string) {
+  try { localStorage.setItem(LS_CELEBRATED_KEY, date); } catch {}
+}
 
 function lsSave(date: string, tasks: TimetableTask[]) {
   try {
@@ -95,7 +103,7 @@ export default function Home() {
 
   useEffect(() => { void loadTodayTasks(); }, [loadTodayTasks]);
 
-  // Confetti when everything is done
+  // Confetti when everything is done — only on the live transition, not on reload
   const allTasksCompleted = tasks.length > 0 && tasks.every((t) => t.completed);
   useEffect(() => {
     if (!allTasksCompleted) {
@@ -103,6 +111,10 @@ export default function Home() {
       setShowCelebration(false);
       return;
     }
+
+    // Tasks were already completed before this session loaded — skip
+    if (hasCelebratedToday(today)) return;
+    markCelebratedToday(today);
 
     if (supabase && tasks.length > 0) {
       const total = tasks.length;
